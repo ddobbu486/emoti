@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>이모티콘 AI · 32컷 가이드 도안 생성기</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">이모티콘<span>AI</span></div>
+  <div class="key-box">
+    <input id="apiKey" type="password" placeholder="Anthropic API 키 (sk-ant-...)">
+    <button id="saveKey">저장</button>
+    <span id="keyStatus" class="key-status">미입력</span>
+    <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">키 발급 받으러 가기</a>
+  </div>
+</header>
+
+<main>
+
+  <!-- ===== WIZARD ===== -->
+  <section id="wizard" class="card">
+    <div class="progress-row">
+      <span id="stepLabel">STEP 1 / 7</span>
+      <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+    </div>
+
+    <div id="stepArea"></div>
+
+    <div class="nav-row">
+      <button id="prevBtn" class="ghost-btn">&lt; 이전</button>
+      <button id="nextBtn" class="primary-btn">다음 &gt;</button>
+    </div>
+  </section>
+
+  <!-- ===== RESULT ===== -->
+  <section id="resultSection" class="card hidden">
+    <h2>32컷 가이드 도안</h2>
+    <p class="hint">캐릭터 일관성을 위해 같은 설명을 매 컷마다 함께 전달해요. 도안은 흑백 라인아트라 바로 따라 그리기 좋아요.</p>
+
+    <div class="concept-summary" id="conceptSummary"></div>
+
+    <div class="result-actions">
+      <button id="generateAllBtn" class="primary-btn">32컷 전부 생성</button>
+      <button id="downloadZipBtn" class="ghost-btn" disabled>전체 ZIP 다운로드</button>
+      <span id="genStatus" class="gen-status"></span>
+    </div>
+
+    <div id="grid" class="grid"></div>
+  </section>
+
+</main>
+
+<footer>로컬 처리 · 입력한 API 키는 이 브라우저에만 저장되고 서버로 전송되지 않습니다.</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
