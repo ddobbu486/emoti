@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>이모티콘 AI · 32컷 가이드 도안 생성기</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">이모티콘<span>AI</span></div>
+  <div class="key-box">
+    <input id="apiKey" type="password" placeholder="Gemini API 키 (AIza...)">
+    <button id="saveKey">저장</button>
+    <span id="keyStatus" class="key-status">미입력</span>
+    <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">키 발급 받으러 가기</a>
+  </div>
+</header>
+
+<main>
+
+  <!-- ===== CHARACTER UPLOAD ===== -->
+  <section class="card">
+    <h2 class="step-title">내 캐릭터 이미지 (선택)</h2>
+    <p class="step-sub">이미 그려둔 캐릭터가 있다면 올려주세요. 32컷 모두 이 캐릭터를 기준으로 일관성 있게 그려져요. 없으면 아래 위저드 답변만으로 새 캐릭터를 만들어요.</p>
+    <input type="file" id="charImageInput" accept="image/png, image/jpeg, image/webp">
+    <div id="charPreviewBox" class="char-preview hidden">
+      <img id="charPreview" alt="업로드한 캐릭터">
+      <button id="charRemove" class="ghost-btn small">제거</button>
+    </div>
+  </section>
+
+  <!-- ===== WIZARD ===== -->
+  <section id="wizard" class="card">
+    <div class="progress-row">
+      <span id="stepLabel">STEP 1 / 7</span>
+      <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+    </div>
+
+    <div id="stepArea"></div>
+
+    <div class="nav-row">
+      <button id="prevBtn" class="ghost-btn">&lt; 이전</button>
+      <button id="nextBtn" class="primary-btn">다음 &gt;</button>
+    </div>
+  </section>
+
+  <!-- ===== RESULT ===== -->
+  <section id="resultSection" class="card hidden">
+    <h2>캐릭터 컨셉</h2>
+    <div class="concept-summary" id="conceptSummary"></div>
+
+    <!-- 턴어라운드(삼면도) 미리보기 -->
+    <div id="previewStage" class="preview-stage">
+      <h3 class="preview-title">먼저 캐릭터 턴어라운드(삼면도)를 그려볼게요</h3>
+      <p class="hint">정면·측면·후면 3가지 각도를 한 장에 그려서, 이 캐릭터를 기준으로 32컷을 일관성 있게 생성해요. 마음에 안 들면 "다시 그리기"로 새로 뽑을 수 있어요.</p>
+      <div class="preview-row">
+        <div id="previewImgBox" class="preview-img-box turnaround">대기중</div>
+        <div class="preview-actions">
+          <button id="previewBtn" class="primary-btn">턴어라운드 미리보기 생성</button>
+          <button id="previewRetryBtn" class="ghost-btn hidden">다시 그리기</button>
+          <button id="confirmAllBtn" class="primary-btn hidden">좋아요! 32컷 전부 생성</button>
+          <div id="previewError" class="error-box hidden"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 32컷 결과 -->
+    <div id="fullResultStage" class="hidden">
+      <h2>32컷 완성 스티커</h2>
+      <p class="hint">색까지 들어간 완성 컷이라 카카오 이모티콘 심사용으로 바로 다듬어 쓸 수 있어요.</p>
+      <div class="result-actions">
+        <button id="downloadZipBtn" class="ghost-btn" disabled>전체 PNG ZIP 다운로드</button>
+        <span id="genStatus" class="gen-status"></span>
+      </div>
+      <div id="grid" class="grid"></div>
+    </div>
+  </section>
+
+</main>
+
+<footer>로컬 처리 · 입력한 API 키와 업로드한 캐릭터 이미지는 이 브라우저에서 Google Gemini API로 직접 전송되며, 별도 서버에는 저장되지 않습니다.</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
