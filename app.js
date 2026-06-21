@@ -1,8 +1,8 @@
 /* ===================== 설정 ===================== */
-const MODEL = "claude-sonnet-4-6";
-const API_URL = "https://api.anthropic.com/v1/messages";
+const MODEL = "gemini-2.5-flash-image";
+const API_URL = (key) => `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${key}`;
 
-// 위저드 단계 정의 (스크린샷의 성격/직업/관계/취미/운동/말투 구조)
+// 위저드 단계 정의
 const STEPS = [
   {
     key: "personality",
@@ -49,7 +49,7 @@ const STEPS = [
   {
     key: "visual",
     title: "비주얼 포인트가 있다면 적어주세요 (선택)",
-    sub: "예: 단정한 가르마 머리, 동그란 안경, 리본 머리띠 등",
+    sub: "예: 단정한 가르마 머리, 동그란 안경, 리본 머리띠 등 (캐릭터 이미지를 올렸다면 비워둬도 돼요)",
     freeText: true
   }
 ];
@@ -71,6 +71,14 @@ const SITUATIONS = [
 /* ===================== 캐릭터 시드(일관성용) ===================== */
 let characterSeed = "";
 
+// 업로드한 캐릭터 이미지 (base64, mime) — 있으면 모든 컷의 레퍼런스로 사용
+let charImageBase64 = null;
+let charImageMime = null;
+
+// 업로드가 없을 경우, 첫 번째로 생성된 컷을 이후 컷들의 레퍼런스로 재사용해 일관성 유지
+let autoReferenceBase64 = null;
+let autoReferenceMime = null;
+
 /* ===================== DOM ===================== */
 const stepArea = document.getElementById("stepArea");
 const stepLabel = document.getElementById("stepLabel");
@@ -89,9 +97,14 @@ const apiKeyInput = document.getElementById("apiKey");
 const saveKeyBtn = document.getElementById("saveKey");
 const keyStatus = document.getElementById("keyStatus");
 
+const charImageInput = document.getElementById("charImageInput");
+const charPreviewBox = document.getElementById("charPreviewBox");
+const charPreview = document.getElementById("charPreview");
+const charRemove = document.getElementById("charRemove");
+
 /* ===================== API 키 저장/로드 ===================== */
 function loadKey() {
-  const k = localStorage.getItem("emoticon_ai_key");
+  const k = localStorage.getItem("emoticon_ai_gemini_key");
   if (k) {
     apiKeyInput.value = k;
     keyStatus.textContent = "저장됨";
@@ -101,11 +114,37 @@ function loadKey() {
 saveKeyBtn.addEventListener("click", () => {
   const v = apiKeyInput.value.trim();
   if (!v) return;
-  localStorage.setItem("emoticon_ai_key", v);
+  localStorage.setItem("emoticon_ai_gemini_key", v);
   keyStatus.textContent = "저장됨";
   keyStatus.classList.add("ok");
 });
 loadKey();
+
+/* ===================== 캐릭터 이미지 업로드 ===================== */
+charImageInput.addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const dataUrl = await fileToDataURL(file);
+  const [meta, base64] = dataUrl.split(",");
+  charImageMime = meta.match(/data:(.*);base64/)[1];
+  charImageBase64 = base64;
+  charPreview.src = dataUrl;
+  charPreviewBox.classList.remove("hidden");
+});
+charRemove.addEventListener("click", () => {
+  charImageBase64 = null;
+  charImageMime = null;
+  charImageInput.value = "";
+  charPreviewBox.classList.add("hidden");
+});
+function fileToDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
 
 /* ===================== 위저드 렌더 ===================== */
 function renderStep() {
@@ -171,7 +210,7 @@ function finishWizard() {
   characterSeed = buildCharacterSeed();
   wizard.classList.add("hidden");
   resultSection.classList.remove("hidden");
-  conceptSummary.textContent = characterSeed;
+  conceptSummary.textContent = characterSeed + (charImageBase64 ? "\n\n[업로드한 캐릭터 이미지를 기준으로 그려요]" : "\n\n[업로드 이미지 없음 → 첫 컷을 기준 캐릭터로 자동 고정]");
   buildEmptyGrid();
   resultSection.scrollIntoView({ behavior: "smooth" });
 }
@@ -212,38 +251,35 @@ function buildEmptyGrid() {
   });
 }
 
-/* ===================== Claude API 호출 ===================== */
-async function generateOneSVG(situation) {
+/* ===================== Gemini 이미지 생성 ===================== */
+async function generateOneImage(situation, referenceB64, referenceMime) {
   const apiKey = apiKeyInput.value.trim();
   if (!apiKey) throw new Error("API 키를 입력해주세요");
 
-  const systemPrompt = `너는 카카오 이모티콘 가이드 도안을 그리는 라인아트 일러스트레이터야.
+  const promptText = `카카오톡 이모티콘 스타일의 귀여운 캐릭터 스티커를 그려줘.
+
+${referenceB64 ? "함께 첨부한 이미지 속 캐릭터와 외형(얼굴형, 색, 특징)을 동일하게 유지하면서," : "아래 컨셉에 맞는 캐릭터를 새로 디자인해서,"} 이번 컷에서는 "${situation}" 감정/상황을 표정과 포즈로 표현해줘.
+
+${characterSeed}
+
 규칙:
-1. 결과는 반드시 <svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">...</svg> 하나만 출력해. 다른 설명, 코드블록 마크다운 없이 SVG 코드만.
-2. 색은 채우지 말고 검은색 선(stroke="#1B1B1B", stroke-width="6~8", fill="none" 또는 흰색 fill)으로만 그려. 사용자가 따라 그릴 가이드 도안이야.
-3. 매 컷마다 아래 캐릭터 설정을 동일하게 유지해서, 같은 캐릭터가 다른 표정/포즈를 짓는 것처럼 그려.
-4. 배경, 텍스트(말풍선 글자)는 넣지 말고 캐릭터의 표정과 포즈로만 감정/상황을 표현해.
-5. 단순하고 귀여운 라인 드로잉 스타일 (이모티콘 가이드 도안 느낌), 디테일은 과하지 않게.
+- 정사각형 1:1 비율, 배경은 순수 흰색 또는 투명
+- 카카오 이모티콘처럼 굵은 라인 + 파스텔/비비드 컬러의 완성된 채색 일러스트
+- 캐릭터 1마리만, 화면 중앙에 꽉 차게
+- 텍스트나 말풍선 글자는 넣지 말고 표정과 포즈로만 표현
+- 매 컷마다 같은 캐릭터처럼 보이도록 외형을 통일`;
 
-캐릭터 설정:
-${characterSeed}`;
+  const parts = [{ text: promptText }];
+  if (referenceB64) {
+    parts.push({ inline_data: { mime_type: referenceMime, data: referenceB64 } });
+  }
 
-  const userPrompt = `이번 컷이 표현해야 할 상황/감정: "${situation}"
-이 상황에 맞는 캐릭터의 표정과 포즈를 라인아트 SVG로 그려줘.`;
-
-  const res = await fetch(API_URL, {
+  const res = await fetch(API_URL(apiKey), {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true"
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 1500,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userPrompt }]
+      contents: [{ parts }],
+      generationConfig: { responseModalities: ["IMAGE"] }
     })
   });
 
@@ -253,43 +289,92 @@ ${characterSeed}`;
   }
 
   const data = await res.json();
-  const text = (data.content || []).map(c => c.text || "").join("\n");
-  const match = text.match(/<svg[\s\S]*?<\/svg>/i);
-  if (!match) throw new Error("SVG를 찾지 못했어요");
-  return match[0];
+  const cParts = data?.candidates?.[0]?.content?.parts || [];
+  const imgPart = cParts.find(p => p.inlineData || p.inline_data);
+  if (!imgPart) throw new Error("이미지를 받지 못했어요");
+  const inline = imgPart.inlineData || imgPart.inline_data;
+  return { base64: inline.data, mime: inline.mimeType || inline.mime_type || "image/png" };
 }
 
-/* ===================== 전체 32컷 생성 (동시 3개씩) ===================== */
-const results = new Array(SITUATIONS.length).fill(null);
+/* ===================== 전체 32컷 생성 ===================== */
+const results = new Array(SITUATIONS.length).fill(null); // {base64, mime}
+
+async function renderCellResult(i, result) {
+  const cell = document.getElementById(`cell-${i}`);
+  const imgBox = cell.querySelector(".cell-img");
+  cell.classList.remove("pending", "error");
+  const url = `data:${result.mime};base64,${result.base64}`;
+  imgBox.innerHTML = `<img src="${url}" alt="${SITUATIONS[i]}">`;
+  if (!cell.querySelector(".cell-dl")) {
+    const dl = document.createElement("div");
+    dl.className = "cell-dl";
+    dl.textContent = "PNG 저장";
+    dl.addEventListener("click", () => {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${String(i + 1).padStart(2, "0")}_${SITUATIONS[i].replace(/\s+/g, "_")}.png`;
+      a.click();
+    });
+    cell.appendChild(dl);
+  }
+}
 
 async function generateAll() {
-  if (!apiKeyInput.value.trim()) {
-    alert("먼저 상단에 Anthropic API 키를 입력하고 저장해주세요.");
+  const apiKey = apiKeyInput.value.trim();
+  if (!apiKey) {
+    alert("먼저 상단에 Gemini API 키를 입력하고 저장해주세요.");
     return;
   }
   generateAllBtn.disabled = true;
   downloadZipBtn.disabled = true;
-  let done = 0;
   const total = SITUATIONS.length;
+  let done = 0;
   genStatus.textContent = `생성 중... 0 / ${total}`;
 
+  // 레퍼런스 이미지가 없으면 0번 컷을 먼저 생성해서 이후 컷들의 기준으로 삼는다.
+  let startIndex = 0;
+  let referenceB64 = charImageBase64;
+  let referenceMime = charImageMime;
+
+  if (!referenceB64) {
+    try {
+      const r0 = await generateOneImage(SITUATIONS[0], null, null);
+      results[0] = r0;
+      await renderCellResult(0, r0);
+      autoReferenceBase64 = r0.base64;
+      autoReferenceMime = r0.mime;
+      referenceB64 = r0.base64;
+      referenceMime = r0.mime;
+      startIndex = 1;
+      done = 1;
+      genStatus.textContent = `생성 중... ${done} / ${total}`;
+    } catch (e) {
+      const cell = document.getElementById(`cell-0`);
+      cell.classList.remove("pending");
+      cell.classList.add("error");
+      cell.querySelector(".cell-img").textContent = "실패";
+      console.error(e);
+      genStatus.textContent = `첫 컷 생성 실패: ${e.message}`;
+      generateAllBtn.disabled = false;
+      return;
+    }
+  }
+
   const CONCURRENCY = 3;
-  let cursor = 0;
+  let cursor = startIndex;
 
   async function worker() {
     while (cursor < total) {
       const i = cursor++;
       const cell = document.getElementById(`cell-${i}`);
-      const imgBox = cell.querySelector(".cell-img");
       try {
-        const svg = await generateOneSVG(SITUATIONS[i]);
-        results[i] = svg;
-        cell.classList.remove("pending", "error");
-        imgBox.innerHTML = svg;
+        const r = await generateOneImage(SITUATIONS[i], referenceB64, referenceMime);
+        results[i] = r;
+        await renderCellResult(i, r);
       } catch (e) {
         cell.classList.remove("pending");
         cell.classList.add("error");
-        imgBox.textContent = "실패";
+        cell.querySelector(".cell-img").textContent = "실패";
         console.error(`[${i}] ${SITUATIONS[i]}`, e);
       }
       done++;
@@ -300,9 +385,10 @@ async function generateAll() {
   const workers = Array.from({ length: CONCURRENCY }, worker);
   await Promise.all(workers);
 
-  genStatus.textContent = `완료! ${results.filter(Boolean).length} / ${total}`;
+  const successCount = results.filter(Boolean).length;
+  genStatus.textContent = `완료! ${successCount} / ${total}`;
   generateAllBtn.disabled = false;
-  downloadZipBtn.disabled = results.every(r => !r);
+  downloadZipBtn.disabled = successCount === 0;
 }
 
 generateAllBtn.addEventListener("click", generateAll);
@@ -311,11 +397,12 @@ generateAllBtn.addEventListener("click", generateAll);
 downloadZipBtn.addEventListener("click", async () => {
   const zip = new JSZip();
   zip.file("concept.txt", characterSeed);
-  results.forEach((svg, i) => {
-    if (svg) {
+  results.forEach((r, i) => {
+    if (r) {
       const num = String(i + 1).padStart(2, "0");
       const name = SITUATIONS[i].replace(/\s+/g, "_");
-      zip.file(`${num}_${name}.svg`, svg);
+      const ext = (r.mime && r.mime.includes("png")) ? "png" : "jpg";
+      zip.file(`${num}_${name}.${ext}`, r.base64, { base64: true });
     }
   });
   const blob = await zip.generateAsync({ type: "blob" });
